@@ -140,12 +140,22 @@ for i in range(max_steps):
     with torch.no_grad():
         ud.append([((lr*p.grad).std() / p.data.std()).log10().item() for p in parameters])
 
-emb = C[Xte]
-x = emb.view(emb.shape[0],-1)
-for layer in layers:
+def split_loss(split):
+  x,y = {
+    'train': (Xtr, Ytr),
+    'val': (Xdev, Ydev),
+    'test': (Xte, Yte),
+  }[split]
+  emb = C[x]  # 一次性把整个数据集都传进去
+  x = emb.view(emb.shape[0], -1)
+  for layer in layers:
     x = layer(x)
-loss = F.cross_entropy(x, Yte)
-print(f"final loss:{loss:.4f}")
+  loss = F.cross_entropy(x, y)
+
+for layer in layers:
+    layer.training = False
+split_loss('train')
+split_loss('test')
 
 g = torch.Generator().manual_seed(2147483647 + 10)
 
@@ -156,7 +166,6 @@ for _ in range(20):
         emb = C[torch.tensor([context])]
         x = emb.view(emb.shape[0], -1)
         for layer in layers:
-            layer.training = False #别忘记切到推理模式！
             x = layer(x)
         logits = x
         probs = F.softmax(logits, dim=1)
